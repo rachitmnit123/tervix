@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Prevent duplicate feedback
-    const existing = interview.feedback.find(f => f.reviewerId === session.user.id);
+    const existing = interview.feedback.find(f => f.reviewerId === session.user!.id);
     if (existing) {
       return NextResponse.json({ error: 'Feedback already submitted' }, { status: 409 });
     }
