@@ -305,7 +305,7 @@ export default function ProfilePage() {
           ) : (
             recentSessions.map((s) => {
               const isInterviewer = s.role === 'INTERVIEWER';
-              const feedback = s.interview?.feedback?.[0];
+              const feedback = (s.interview as any)?.feedback?.[0];
               const score = isInterviewer ? feedback?.interviewerRating : feedback?.candidateRating;
               return (
                 <div key={s.id} className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/10 hover:border-primary/30 transition-colors">
