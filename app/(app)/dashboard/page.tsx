@@ -250,7 +250,7 @@ export default function DashboardPage() {
                 href="/book-slot"
                 className="inline-block btn-primary py-3 px-6 rounded-xl text-sm font-bold"
               >
-                Book Today's Slot
+                Book Today&apos;s Slot
               </Link>
             </>
           )}
