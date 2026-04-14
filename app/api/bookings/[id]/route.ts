@@ -39,7 +39,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const result = await cancelBooking(params.id, session.user.id);
+    const result = await cancelBooking(params.id, session.user!.id);
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 400 });

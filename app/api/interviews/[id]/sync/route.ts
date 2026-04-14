@@ -25,7 +25,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const userBooking = interview.bookings.find(b => b.userId === session.user.id);
+    const userBooking = interview.bookings.find(b => b.userId === session.user!.id);
     const roles: Record<string, string> = {};
     interview.bookings.forEach(b => { roles[b.userId] = b.role; });
 

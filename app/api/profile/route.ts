@@ -17,7 +17,7 @@ export async function GET() {
     }
 
     const user = await db.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: session.user!.id },
       select: {
         id: true, name: true, email: true, title: true, image: true,
         techStack: true, interviewerRating: true, candidateRating: true,
@@ -28,7 +28,7 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const recentSessions = await db.booking.findMany({
-      where: { userId: session.user.id, status: 'COMPLETED' },
+      where: { userId: session.user!.id, status: 'COMPLETED' },
       include: {
         slot: true,
         interview: {
@@ -36,7 +36,7 @@ export async function GET() {
             candidateQuestion:   { select: { title: true, topic: true, difficulty: true } },
             interviewerQuestion: { select: { title: true, topic: true, difficulty: true } },
             feedback: {
-              where: { reviewerId: session.user.id },
+              where: { reviewerId: session.user!.id },
               select: { candidateRating: true, interviewerRating: true },
             },
           },
@@ -46,7 +46,7 @@ export async function GET() {
       take: 5,
     });
 
-    const monthlyStats = await getMonthlyStats(session.user.id);
+    const monthlyStats = await getMonthlyStats(session.user!.id);
 
     return NextResponse.json({ user, recentSessions, monthlyStats });
   } catch (error) {
@@ -66,7 +66,7 @@ export async function PATCH(req: NextRequest) {
     const data = updateSchema.parse(body);
 
     const user = await db.user.update({
-      where: { id: session.user.id },
+      where: { id: session.user!.id },
       data,
       select: { id: true, name: true, email: true, title: true, techStack: true },
     });

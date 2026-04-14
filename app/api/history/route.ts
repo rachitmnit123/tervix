@@ -10,7 +10,7 @@ export async function GET() {
     }
 
     const bookings = await db.booking.findMany({
-      where: { userId: session.user.id },
+      where: { userId: session.user!.id },
       include: {
         slot: true,
         interview: {
@@ -18,11 +18,11 @@ export async function GET() {
             candidateQuestion:   { select: { title: true, topic: true, difficulty: true } },
             interviewerQuestion: { select: { title: true, topic: true, difficulty: true } },
             bookings: {
-              where: { userId: { not: session.user.id } },
+              where: { userId: { not: session.user!.id } },
               include: { user: { select: { id: true, name: true, title: true } } },
             },
             feedback: {
-              where: { reviewerId: session.user.id },
+              where: { reviewerId: session.user!.id },
               select: { id: true },
             },
           },

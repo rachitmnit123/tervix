@@ -15,14 +15,14 @@ export async function POST(req: NextRequest) {
 
     // Rate limiting
     const now = Date.now();
-    const last = lastExecTime.get(session.user.id) ?? 0;
+    const last = lastExecTime.get(session.user!.id) ?? 0;
     if (now - last < 3000) {
       return NextResponse.json(
         { error: 'Too many requests. Please wait a moment.' },
         { status: 429 }
       );
     }
-    lastExecTime.set(session.user.id, now);
+    lastExecTime.set(session.user!.id, now);
 
     const { code, language = 'python', stdin = '', interviewId, mode = 'run' } = await req.json();
 
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
 
     // MODE 2: Run against test cases (new behavior)
     if (mode === 'test' && interviewId) {
-      return await handleTestCaseRun(code, language, interviewId, session.user.id);
+      return await handleTestCaseRun(code, language, interviewId, session.user!.id);
     }
 
     return NextResponse.json({ error: 'Invalid mode' }, { status: 400 });

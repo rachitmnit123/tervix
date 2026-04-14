@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     await db.feedback.create({
       data: {
         interviewId:      data.interviewId,
-        reviewerId:       session.user.id,
+        reviewerId:       session.user!.id,
         reviewedUserId:   data.reviewedUserId,
         candidateRating:  data.candidateRating,
         interviewerRating: data.interviewerRating,
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     } else {
       // Just clear for this reviewer
       await db.user.update({
-        where: { id: session.user.id },
+        where: { id: session.user!.id },
         data: { pendingFeedback: false },
       });
     }
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
     }
 
     const feedback = await db.feedback.findFirst({
-      where: { interviewId, reviewerId: session.user.id },
+      where: { interviewId, reviewerId: session.user!.id },
     });
 
     return NextResponse.json({ submitted: !!feedback });

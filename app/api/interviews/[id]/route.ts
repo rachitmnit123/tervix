@@ -82,7 +82,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const isParticipant = interview.bookings.some(b => b.userId === session.user.id);
+    const isParticipant = interview.bookings.some(b => b.userId === session.user!.id);
     if (!isParticipant) {
       return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
     }

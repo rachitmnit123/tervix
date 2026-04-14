@@ -26,7 +26,7 @@ export async function GET() {
         },
       }),
       db.booking.findMany({
-        where: { userId: session.user.id, slot: { date: today } },
+        where: { userId: session.user!.id, slot: { date: today } },
         include: { slot: true, interview: true },
       }),
     ]);
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     const { startTime } = await req.json();
 
     const user = await db.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: session.user!.id },
       select: { pendingFeedback: true },
     });
 
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
 
     // Prevent duplicate booking for same slot
     const existing = await db.booking.findUnique({
-      where: { userId_slotId: { userId: session.user.id, slotId: slot.id } },
+      where: { userId_slotId: { userId: session.user!.id, slotId: slot.id } },
     });
     if (existing && existing.status !== 'CANCELLED') {
       return NextResponse.json({ error: 'Already booked this slot' }, { status: 409 });
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
         })
       : await db.booking.create({
           data: {
-            userId: session.user.id,
+            userId: session.user!.id,
             slotId: slot.id,
             status: 'WAITING',
           },
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
     // Send booking confirmation email (non-blocking)
     try {
       const userForEmail = await db.user.findUnique({
-        where: { id: session.user.id },
+        where: { id: session.user!.id },
         select: { name: true, email: true },
       });
       if (userForEmail?.email) {
