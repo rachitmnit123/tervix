@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Interview not found' }, { status: 404 });
     }
 
-    const userBooking = interview.bookings.find(b => b.userId === session.user.id);
+    const userBooking = interview.bookings.find(b => b.userId === session.user!.id);
     if (!userBooking) {
       return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
     }
