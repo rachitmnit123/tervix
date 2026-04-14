@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Interview is not completed' }, { status: 400 });
     }
 
-    const userBooking = interview.bookings.find(b => b.userId === session.user.id);
+    const userBooking = interview.bookings.find(b => b.userId === session.user!.id);
     if (!userBooking) {
       return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
     }
