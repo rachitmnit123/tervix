@@ -318,7 +318,7 @@ export default function ProfilePage() {
                       </div>
                       <div>
                         <p className="text-sm font-bold text-on-surface">
-                            {(isInterviewer ? s.interview?.interviewerQuestion?.topic : s.interview?.candidateQuestion?.topic) ?? 'DSA Session'}
+                            {(isInterviewer ? (s.interview as any)?.interviewerQuestion?.topic : (s.interview as any)?.candidateQuestion?.topic) ?? 'DSA Session'}
                           </p>
                         <p className="text-[10px] text-on-surface-variant/60">
                           {new Date(s.slot.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
