@@ -3,11 +3,11 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
+import nextdynamic from 'next/dynamic';
 import { STARTER_TEMPLATES, LANGUAGE_LABELS, LANGUAGE_EXTENSIONS } from '@/lib/judge0';
 import { useTheme } from '@/components/ThemeProvider';
 
-const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
+const MonacoEditor = nextdynamic(() => import('@monaco-editor/react'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full bg-surface-container-lowest flex items-center justify-center">
