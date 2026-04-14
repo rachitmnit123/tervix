@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  name              String
+  image             String?
+  emailVerified     DateTime?
+  title             String?   @default("Software Engineer")
+  techStack         String[]  @default([])
+  interviewerRating Float     @default(0)
+  candidateRating   Float     @default(0)
+  totalSessions     Int       @default(0)
+  totalMinutes      Int       @default(0)
+  pendingFeedback   Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  accounts          Account[]
+  sessions          Session[]
+  bookings          Booking[]
+  feedbackGiven     Feedback[] @relation("FeedbackGiver")
+  feedbackReceived  Feedback[] @relation("FeedbackReceiver")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Slot {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  startTime String
+  endTime   String
+  createdAt DateTime @default(now())
+  bookings  Booking[]
+  @@unique([date, startTime])
+  @@map("slots")
+}
+
+model Booking {
+  id          String        @id @default(cuid())
+  userId      String
+  slotId      String
+  role        Role          @default(CANDIDATE)
+  status      BookingStatus @default(WAITING)
+  interviewId String?
+  matchedAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slot      Slot       @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  interview Interview? @relation(fields: [interviewId], references: [id])
+
+  @@unique([userId, slotId])
+  @@map("bookings")
+}
+
+model Interview {
+  id                   String          @id @default(cuid())
+  slotId               String
+  // Role-specific questions
+  interviewerQuestionId String
+  candidateQuestionId   String
+  status               InterviewStatus @default(SCHEDULED)
+  // Per-language code state stored as JSON
+  codeState            Json?
+  language             String          @default("python")
+  // Peer signaling
+  peerMeta             Json?
+  // Time tracking
+  startedAt            DateTime?
+  endedAt              DateTime?
+  durationMinutes      Int?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  interviewerQuestion  Question   @relation("InterviewerQuestion", fields: [interviewerQuestionId], references: [id])
+  candidateQuestion    Question   @relation("CandidateQuestion", fields: [candidateQuestionId], references: [id])
+  bookings             Booking[]
+  feedback             Feedback[]
+
+  @@map("interviews")
+}
+
+model Question {
+  id           String     @id @default(cuid())
+  title        String
+  difficulty   Difficulty
+  description  String     @db.Text
+  examples     Json
+  constraints  String[]
+  starterCode  String     @db.Text
+  topic        String
+  visibleTests Json       @default("[]")
+  hiddenTests  Json       @default("[]")
+  createdAt    DateTime   @default(now())
+
+  asInterviewerQuestion Interview[] @relation("InterviewerQuestion")
+  asCandidateQuestion   Interview[] @relation("CandidateQuestion")
+
+  @@map("questions")
+}
+
+model Feedback {
+  id               String   @id @default(cuid())
+  interviewId      String
+  reviewerId       String
+  reviewedUserId   String
+  candidateRating  Float?
+  interviewerRating Float?
+  comments         String   @db.Text
+  role             Role     // role of the REVIEWED user
+  createdAt        DateTime @default(now())
+
+  interview    Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  reviewer     User      @relation("FeedbackGiver", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewedUser User      @relation("FeedbackReceiver", fields: [reviewedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([interviewId, reviewerId])
+  @@map("feedback")
+}
+
+enum Role {
+  INTERVIEWER
+  CANDIDATE
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String   @default("Admin")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("admins")
+}
+
+
+
+enum BookingStatus {
+  WAITING
+  MATCHED
+  COMPLETED
+  CANCELLED
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
