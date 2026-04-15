@@ -1,8 +1,8 @@
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const fetchCache = 'force-no-store';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { createAdminSession, getAdminSession, COOKIE_NAME } from '@/lib/admin-auth';
 
@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const { db } = await import('@/lib/db'); // ✅ FIX: lazy import
+
     const { email, password } = await req.json();
 
     if (!email || !password) {
@@ -59,10 +61,12 @@ export async function POST(req: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 8 * 60 * 60, // 8 hours
+      maxAge: 8 * 60 * 60,
       path: '/',
     });
+
     return res;
+
   } catch (error) {
     console.error('Admin login error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

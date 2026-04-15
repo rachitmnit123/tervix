@@ -1,21 +1,24 @@
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
+export const fetchCache = 'force-no-store';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/admin-auth';
-import { db } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   try {
     const session = await requireAdminSession().catch(() => null);
 
-if (!session) {
-  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-}
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { db } = await import('@/lib/db'); // ✅ FIX
+
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get('page') || '1');
     const status = searchParams.get('status') || undefined;
+
     const limit = 20;
     const skip = (page - 1) * limit;
 
@@ -25,9 +28,10 @@ if (!session) {
       db.interview.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        skip, take: limit,
+        skip,
+        take: limit,
         include: {
-          candidateQuestion:   { select: { title: true, difficulty: true } },
+          candidateQuestion: { select: { title: true, difficulty: true } },
           interviewerQuestion: { select: { title: true } },
           bookings: {
             include: { user: { select: { name: true, email: true } } },
@@ -37,9 +41,19 @@ if (!session) {
       db.interview.count({ where }),
     ]);
 
-    return NextResponse.json({ interviews, total, page, pages: Math.ceil(total / limit) });
+    return NextResponse.json({
+      interviews,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
+
   } catch (e: any) {
-    if (e.message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (e.message === 'UNAUTHORIZED') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    console.error(e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
