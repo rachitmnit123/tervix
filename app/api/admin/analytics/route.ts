@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
+export const fetchCache = 'force-no-store'; // ✅ ADD THIS LINE
 
 import { NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/admin-auth';
