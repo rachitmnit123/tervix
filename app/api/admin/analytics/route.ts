@@ -8,7 +8,11 @@ import { db } from '@/lib/db';
 
 export async function GET() {
   try {
-    await requireAdminSession();
+    const session = await requireAdminSession().catch(() => null);
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);

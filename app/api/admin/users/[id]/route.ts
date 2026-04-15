@@ -7,7 +7,11 @@ import { db } from '@/lib/db';
 
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await requireAdminSession();
+    const session = await requireAdminSession().catch(() => null);
+
+if (!session) {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
     await db.user.delete({ where: { id: params.id } });
     return NextResponse.json({ success: true });
   } catch (e: any) {

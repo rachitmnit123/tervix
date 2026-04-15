@@ -7,7 +7,11 @@ import { db } from '@/lib/db';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await requireAdminSession();
+    const session = await requireAdminSession().catch(() => null);
+
+if (!session) {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
     const { action } = await req.json();
 
     if (action === 'force_end') {

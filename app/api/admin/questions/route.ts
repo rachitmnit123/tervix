@@ -8,7 +8,11 @@ import { db } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   try {
-    await requireAdminSession();
+    const session = await requireAdminSession().catch(() => null);
+
+if (!session) {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = 20;
@@ -35,7 +39,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireAdminSession();
+    const session = await requireAdminSession().catch(() => null);
+
+if (!session) {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
     const data = await req.json();
 
     const question = await db.question.create({

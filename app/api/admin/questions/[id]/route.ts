@@ -7,7 +7,11 @@ import { db } from '@/lib/db';
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await requireAdminSession();
+    const session = await requireAdminSession().catch(() => null);
+
+if (!session) {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
     const q = await db.question.findUnique({ where: { id: params.id } });
     if (!q) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ question: q });
@@ -19,7 +23,11 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await requireAdminSession();
+    const session = await requireAdminSession().catch(() => null);
+
+if (!session) {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
     const data = await req.json();
     const question = await db.question.update({
       where: { id: params.id },
@@ -44,7 +52,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await requireAdminSession();
+    const session = await requireAdminSession().catch(() => null);
+
+if (!session) {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
     await db.question.delete({ where: { id: params.id } });
     return NextResponse.json({ success: true });
   } catch (e: any) {
