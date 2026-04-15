@@ -1,18 +1,15 @@
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const fetchCache = 'force-no-store'; // ✅ ADD THIS LINE
+export const fetchCache = 'force-no-store';
 
 import { NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/admin-auth';
-import { db } from '@/lib/db';
 
 export async function GET() {
   try {
-    const session = await requireAdminSession().catch(() => null);
+    const { db } = await import('@/lib/db'); // ✅ LAZY IMPORT
 
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await requireAdminSession();
 
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
@@ -39,8 +36,12 @@ export async function GET() {
       avgCandidateRating: Math.round((avgRatings._avg.candidateRating ?? 0) * 10) / 10,
       avgInterviewerRating: Math.round((avgRatings._avg.interviewerRating ?? 0) * 10) / 10,
     });
+
   } catch (e: any) {
-    if (e.message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (e.message === 'UNAUTHORIZED') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    console.error(e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
