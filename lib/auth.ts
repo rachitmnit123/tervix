@@ -8,7 +8,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth(async () => {
   return {
     adapter: PrismaAdapter(db),
     session: { strategy: 'jwt' },
-    checks: ['state'],  // 👈 disables PKCE, fixes InvalidCheck error
+    checks: ['state'],
+
+    cookies: {
+      pkceCodeVerifier: {
+        name: 'next-auth.pkce.code_verifier',
+        options: {
+          httpOnly: true,
+          sameSite: 'none',
+          path: '/',
+          secure: true,
+        },
+      },
+    },
 
     pages: {
       signIn: '/login',
