@@ -1,12 +1,10 @@
-
 'use client';
-export const dynamic = 'force-dynamic';
 
 import { signIn } from 'next-auth/react';
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-export default function LoginPage() {
+export default function LoginForm() {
   const [loading, setLoading] = useState(false);
   const searchParams = useSearchParams();
   const error = searchParams.get('error');
@@ -20,7 +18,7 @@ export default function LoginPage() {
     <div className="animate-fade-in-up">
       {/* Logo */}
       <div className="flex justify-center mb-10">
-        <img src="/tervixlogo.png" alt="Tervix" style={{ height: '100px', width: 'auto' }} />
+        <img src="/tervixlogo.svg" alt="Tervix" style={{ height: '40px', width: 'auto' }} />
       </div>
 
       <div className="bg-surface-container rounded-2xl p-8 border border-outline-variant/10">
