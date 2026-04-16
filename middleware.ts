@@ -1,31 +1,30 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-import { getAdminSession } from '@/lib/admin-auth';
 
 export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ── Admin routes protection ───────────────────────────────────────────────
+  // ── Admin routes ──────────────────────────────────────────────────────────
   if (pathname.startsWith('/admin')) {
     if (pathname === '/admin/login') return NextResponse.next();
-
+    const { getAdminSession } = await import('@/lib/admin-auth');
     const session = await getAdminSession();
-    if (!session) {
-      return NextResponse.redirect(new URL('/admin/login', req.url));
-    }
+    if (!session) return NextResponse.redirect(new URL('/admin/login', req.url));
     return NextResponse.next();
   }
 
-  // ── User routes protection (use JWT token, NOT auth()) ────────────────────
+  // ── User routes ───────────────────────────────────────────────────────────
   const token = await getToken({
     req,
-    secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+    secret: process.env.AUTH_SECRET,
+    cookieName: process.env.NODE_ENV === 'production'
+      ? '__Secure-authjs.session-token'
+      : 'authjs.session-token',
   });
 
   const isLoggedIn = !!token;
-  const publicPaths = ['/login'];
-  const isPublic = publicPaths.some(p => pathname.startsWith(p));
+  const isPublic = pathname.startsWith('/login');
 
   if (!isLoggedIn && !isPublic) {
     return NextResponse.redirect(new URL('/login', req.url));
