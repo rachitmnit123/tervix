@@ -7,7 +7,7 @@ const nextConfig = {
     ],
   },
   experimental: {
-    serverComponentsExternalPackages: ['@prisma/client', 'bcryptjs'],
+    serverExternalPackages: ['@prisma/client', 'bcryptjs'], // 👈 fixed key name
   },
   output: 'standalone',
 };
