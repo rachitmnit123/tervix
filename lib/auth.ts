@@ -8,7 +8,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth(async () => {
   return {
     adapter: PrismaAdapter(db),
     session: { strategy: 'jwt' },
-    checks: ['state'],
+    
 
     cookies: {
       pkceCodeVerifier: {
@@ -31,6 +31,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth(async () => {
       Google({
         clientId: process.env.GOOGLE_CLIENT_ID!,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        checks: ['none'], 
         authorization: {
           params: {
             prompt: 'consent',
