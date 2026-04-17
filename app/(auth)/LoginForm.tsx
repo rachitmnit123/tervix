@@ -18,7 +18,7 @@ export default function LoginForm() {
     <div className="animate-fade-in-up">
       {/* Logo */}
       <div className="flex justify-center mb-10">
-        <img src="/tervixlogo.svg" alt="Tervix" style={{ height: '40px', width: 'auto' }} />
+        <img src="/tervixlogo.png" alt="Tervix" style={{ height: '100px', width: 'auto' }} />
       </div>
 
       <div className="bg-surface-container rounded-2xl p-8 border border-outline-variant/10">
