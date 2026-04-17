@@ -8,8 +8,8 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'sw
 const manrope = Manrope({ subsets: ['latin'], variable: '--font-manrope', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: 'Tervix – Peer Mock Interviews',
-  description: 'Sharpen your DSA skills with same-day peer mock interviews.',
+  title: 'Tervix | Practice DSA Mock Interviews with Peers',
+  description: 'Practice real DSA mock interviews with peers. Book instant sessions, improve coding skills, and crack top tech interviews with Tervix.',
   icons: {
     icon: "/favicon.png",
   },
