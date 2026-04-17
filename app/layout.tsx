@@ -10,7 +10,9 @@ const manrope = Manrope({ subsets: ['latin'], variable: '--font-manrope', displa
 export const metadata: Metadata = {
   title: 'Tervix – Peer Mock Interviews',
   description: 'Sharpen your DSA skills with same-day peer mock interviews.',
-  
+  icons: {
+    icon: "/favicon.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
