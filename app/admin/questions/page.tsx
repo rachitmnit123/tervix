@@ -65,10 +65,19 @@ export default function AdminQuestionsPage() {
   }
 
   async function deleteQuestion(id: string) {
-    if (!confirm('Delete this question?')) return;
-    await fetch(`/api/admin/questions/${id}`, { method: 'DELETE' });
-    fetchQuestions();
+  if (!confirm('Delete this question? This will also remove any interviews that used this question.')) return;
+  try {
+    const res = await fetch(`/api/admin/questions/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      fetchQuestions();
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Failed to delete question');
+    }
+  } catch (e) {
+    alert('Network error while deleting');
   }
+}
 
   const inputStyle = { width: '100%', padding: '8px 12px', background: '#222a3d', border: '1px solid rgba(70,69,85,0.3)', borderRadius: 8, color: '#dae2fd', fontSize: 13, boxSizing: 'border-box' as const, outline: 'none' };
   const labelStyle = { display: 'block', fontSize: 11, fontWeight: 700, color: '#c7c4d8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 4 };
