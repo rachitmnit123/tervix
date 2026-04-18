@@ -25,6 +25,10 @@ type PeerEvent =
   | { type: 'session_end' }
   | { type: 'role_change'; roles: Record<string, string> }
   | { type: 'language_change'; language: string }
+  | { type: 'code_change'; codeState: Record<string, string>; language: string }
+  | { type: 'run_result'; output: string; isError: boolean; execTime: string }
+  | { type: 'test_result'; results: any }
+  | { type: 'reset_code'; language: string }
   | { type: 'ping' };
 
 interface Question {
@@ -79,6 +83,10 @@ type ExecStatus = 'idle' | 'running' | 'success' | 'error';
 
 export default function InterviewRoomPage({ params }: { params: { id: string } }) {
   const [interview, setInterview] = useState<Interview | null>(null);
+
+  // FIX 1: Store current user's ID explicitly so role lookups are always correct
+  const [myUserId, setMyUserId] = useState<string>('');
+
   const [userRole, setUserRole] = useState<string>('CANDIDATE');
   const [question, setQuestion] = useState<Question | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,7 +126,7 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerRef        = useRef<any>(null);
   const mediaCallRef   = useRef<any>(null);
-  const dataConnRef    = useRef<any>(null); // PeerJS data channel
+  const dataConnRef    = useRef<any>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
 
   // Resizable panel
@@ -130,10 +138,27 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
   const lastSaveRef     = useRef<number>(0);
   const saveTimerRef    = useRef<NodeJS.Timeout>();
   const isSyncingRef    = useRef(false);
-  const eventHandledRef = useRef<Set<string>>(new Set()); // prevent duplicate events
+
+  // FIX 2: Use refs for values needed inside callbacks to avoid stale closures
+  const userRoleRef    = useRef<string>('CANDIDATE');
+  const myUserIdRef    = useRef<string>('');
+  const interviewRef   = useRef<Interview | null>(null);
+  const codeStateRef   = useRef<Record<Language, string>>({
+    python: STARTER_TEMPLATES.python,
+    cpp:    STARTER_TEMPLATES.cpp,
+    java:   STARTER_TEMPLATES.java,
+  });
+  const languageRef = useRef<Language>('python');
 
   const { theme } = useTheme();
   const router = useRouter();
+
+  // Keep refs in sync with state
+  useEffect(() => { userRoleRef.current = userRole; }, [userRole]);
+  useEffect(() => { myUserIdRef.current = myUserId; }, [myUserId]);
+  useEffect(() => { interviewRef.current = interview; }, [interview]);
+  useEffect(() => { codeStateRef.current = codeState; }, [codeState]);
+  useEffect(() => { languageRef.current = language; }, [language]);
 
   // Collapse sidebar
   useEffect(() => {
@@ -152,17 +177,36 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
 
         const role = data.userRole as string;
         setUserRole(role);
+        userRoleRef.current = role;
+
+        // FIX 3: Correctly identify "me" from bookings using userRole returned by API
+        // The API returns userRole which corresponds to the authenticated user's role.
+        // We find our booking by matching the role. But two users could have same role
+        // after a switch, so the API also returns the session user's booking directly.
+        // We store myUserId from the booking that matches our role initially.
+        // Better: use a dedicated /api/profile or derive from the booking list.
+        // The API at /api/interviews/[id] returns userRole = the calling user's role,
+        // so we find the booking whose role === userRole as our own booking.
+        const myBooking = iv.bookings.find(b => b.role === role);
+        if (myBooking) {
+          setMyUserId(myBooking.user.id);
+          myUserIdRef.current = myBooking.user.id;
+        }
+
         setQuestion(role === 'INTERVIEWER' ? iv.interviewerQuestion : iv.candidateQuestion);
 
         const savedLang = (iv.language || 'python') as Language;
         setLanguage(savedLang);
+        languageRef.current = savedLang;
 
         if (iv.codeState && typeof iv.codeState === 'object') {
-          setCodeState({
+          const cs = {
             python: (iv.codeState as any).python || STARTER_TEMPLATES.python,
             cpp:    (iv.codeState as any).cpp    || STARTER_TEMPLATES.cpp,
             java:   (iv.codeState as any).java   || STARTER_TEMPLATES.java,
-          });
+          };
+          setCodeState(cs);
+          codeStateRef.current = cs;
         }
         if ((iv as any).startedAt) setStartedAt((iv as any).startedAt);
         if (iv.status === 'COMPLETED') handleSessionEndedLocally();
@@ -181,7 +225,11 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
     }
   }, [interview, params.id]);
 
-  // ── Sync polling (fallback for when data channel fails) ──────────────────
+  // ── Sync polling ─────────────────────────────────────────────────────────
+  // FIX 4: Sync now also polls codeState so the other user sees code changes
+  // without refreshing (as a fallback when PeerJS data channel is unavailable).
+  // FIX 5: Role detection in sync uses myUserId (stored in ref) not a broken
+  // .find(b => b.user) call which was always returning undefined.
   useEffect(() => {
     syncIntervalRef.current = setInterval(async () => {
       if (isSyncingRef.current || sessionEnded) return;
@@ -191,27 +239,46 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
         const data = await res.json();
         if (!data) return;
 
-        // Session ended by peer via DB
         if (data.status === 'COMPLETED' && !sessionEnded) {
           handleSessionEndedLocally();
           return;
         }
 
-        // Role changed by peer
-        const myNewRole = data.roles?.[interview?.bookings?.find(b => b.user)?.user?.id ?? ''];
-        if (myNewRole && myNewRole !== userRole) {
-          applyRoleChange(myNewRole, data.roles);
+        // FIX 5: Use myUserIdRef to correctly find our role in the polled data
+        const myId = myUserIdRef.current;
+        const myNewRole = myId ? data.roles?.[myId] : null;
+        if (myNewRole && myNewRole !== userRoleRef.current) {
+          applyRoleChange(myNewRole);
         }
 
-        // Language changed by peer (only if not recently saved by us)
-        if (data.language && data.language !== language && Date.now() - lastSaveRef.current > 5000) {
+        // Language sync (only if peer changed it, not us)
+        if (data.language && data.language !== languageRef.current && Date.now() - lastSaveRef.current > 5000) {
           setLanguage(data.language as Language);
+          languageRef.current = data.language as Language;
+        }
+
+        // FIX 6: Sync code state from DB so the other user sees code without refresh
+        // Only apply if we haven't typed recently (to avoid overwriting local edits)
+        if (data.codeState && Date.now() - lastSaveRef.current > 3000) {
+          const incoming = data.codeState as Record<Language, string>;
+          setCodeState(prev => {
+            const merged = { ...prev };
+            let changed = false;
+            (Object.keys(incoming) as Language[]).forEach(lang => {
+              if (incoming[lang] && incoming[lang] !== prev[lang]) {
+                merged[lang] = incoming[lang];
+                changed = true;
+              }
+            });
+            if (changed) codeStateRef.current = merged;
+            return changed ? merged : prev;
+          });
         }
       } catch {}
       finally { isSyncingRef.current = false; }
-    }, 2500);
+    }, 2000);
     return () => clearInterval(syncIntervalRef.current);
-  }, [params.id, sessionEnded, userRole, language, interview]);
+  }, [params.id, sessionEnded]);
 
   // ── PeerJS WebRTC + Data Channel ─────────────────────────────────────────
   useEffect(() => {
@@ -227,7 +294,6 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
       peerRef.current = peer;
 
       peer.on('open', (id: string) => {
-        // Register peer ID
         fetch(`/api/interviews/${params.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -236,7 +302,6 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
         pollForPeer(id);
       });
 
-      // Incoming media call
       peer.on('call', (call: any) => {
         mediaCallRef.current = call;
         call.answer(localStreamRef.current || undefined);
@@ -247,7 +312,6 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
         call.on('close', () => { setPeerConnected(false); setRemoteStream(null); });
       });
 
-      // Incoming data connection
       peer.on('connection', (conn: any) => {
         setupDataConnection(conn);
       });
@@ -273,27 +337,62 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
   }
 
   // ── Handle incoming peer events ──────────────────────────────────────────
+  // FIX 7: Use refs inside handlePeerEvent to avoid stale closure issues.
+  // Previously role_change used `userRole` state directly which was stale.
   function handlePeerEvent(event: PeerEvent) {
-    const key = JSON.stringify(event);
-    if (eventHandledRef.current.has(key)) return; // prevent duplicates
-    eventHandledRef.current.add(key);
-    setTimeout(() => eventHandledRef.current.delete(key), 3000);
-
     switch (event.type) {
       case 'session_end':
         handleSessionEndedLocally();
         break;
-      case 'role_change':
-        applyRoleChange(event.roles[getCurrentUserId()] ?? userRole, event.roles);
+
+      case 'role_change': {
+        // FIX 8: Find MY new role from the incoming roles map using myUserIdRef
+        const myId = myUserIdRef.current;
+        const myNewRole = myId ? event.roles[myId] : null;
+        if (myNewRole) applyRoleChange(myNewRole);
         break;
+      }
+
       case 'language_change':
         setLanguage(event.language as Language);
+        languageRef.current = event.language as Language;
         break;
-    }
-  }
 
-  function getCurrentUserId(): string {
-    return interview?.bookings?.find(b => b.role === userRole)?.user?.id ?? '';
+      // FIX 9: Real-time code sync via PeerJS data channel
+      case 'code_change':
+        lastSaveRef.current = 0; // Allow overwrite from peer
+        setCodeState(event.codeState as Record<Language, string>);
+        codeStateRef.current = event.codeState as Record<Language, string>;
+        if (event.language) {
+          setLanguage(event.language as Language);
+          languageRef.current = event.language as Language;
+        }
+        break;
+
+      // FIX 10: Sync run/test results to both users
+      case 'run_result':
+        setExecOutput(event.output);
+        setExecTime(event.execTime);
+        setExecStatus(event.isError ? 'error' : 'success');
+        setShowConsole(true);
+        break;
+
+      case 'test_result':
+        setTestResults(event.results);
+        setShowTestPanel(true);
+        setRunningTests(false);
+        break;
+
+      case 'reset_code': {
+        const resetState = {
+          ...codeStateRef.current,
+          [event.language]: STARTER_TEMPLATES[event.language as Language],
+        };
+        setCodeState(resetState);
+        codeStateRef.current = resetState;
+        break;
+      }
+    }
   }
 
   // ── Send event to peer via data channel ─────────────────────────────────
@@ -301,7 +400,6 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
     if (dataConnRef.current?.open) {
       dataConnRef.current.send(JSON.stringify(event));
     }
-    // DB is always updated too (polling fallback)
   }
 
   // ── Session end logic ────────────────────────────────────────────────────
@@ -309,64 +407,67 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
     if (sessionEnded) return;
     setSessionEnded(true);
     clearInterval(syncIntervalRef.current);
-
-    // Stop media
     localStream?.getTracks().forEach(t => t.stop());
     if (peerRef.current) peerRef.current.destroy();
-
-    // Redirect after short delay
     setTimeout(() => router.push(`/feedback/${params.id}`), 1500);
   }
 
   async function endSession() {
     if (ending || sessionEnded) return;
     setEnding(true);
-
-    // 1. Update DB
     await fetch(`/api/interviews/${params.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'end', codeState }),
     });
-
-    // 2. Notify peer via data channel
     sendToPeer({ type: 'session_end' });
-
-    // 3. End locally
     handleSessionEndedLocally();
   }
 
   // ── Role switch logic ────────────────────────────────────────────────────
+  // FIX 11: switchRole now builds the newRoles map correctly using myUserId
+  // so that each device gets the right role, not a mirror of the same role.
   async function switchRole() {
     const res = await fetch(`/api/interviews/${params.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'switchRole' }),
     });
-
     if (!res.ok) return;
 
-    // Compute new roles
-    const newRole = userRole === 'INTERVIEWER' ? 'CANDIDATE' : 'INTERVIEWER';
+    const iv = interviewRef.current;
+    if (!iv) return;
+
+    // Build the swapped roles map using actual user IDs
     const newRoles: Record<string, string> = {};
-    interview?.bookings.forEach(b => {
+    iv.bookings.forEach(b => {
       newRoles[b.user.id] = b.role === 'INTERVIEWER' ? 'CANDIDATE' : 'INTERVIEWER';
     });
 
-    // Apply locally
-    applyRoleChange(newRole, newRoles);
+    // Apply my new role locally
+    const myNewRole = newRoles[myUserIdRef.current] ?? (userRoleRef.current === 'INTERVIEWER' ? 'CANDIDATE' : 'INTERVIEWER');
+    applyRoleChange(myNewRole);
 
-    // Notify peer
+    // Also update the interview state so future role maps are correct
+    setInterview(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        bookings: prev.bookings.map(b => ({ ...b, role: newRoles[b.user.id] ?? b.role })),
+      };
+    });
+
+    // FIX 12: Send the full roles map to peer so each device independently
+    // looks up its own ID and gets the correct (opposite) role
     sendToPeer({ type: 'role_change', roles: newRoles });
   }
 
-  function applyRoleChange(newRole: string, allRoles: Record<string, string>) {
+  function applyRoleChange(newRole: string) {
     setUserRole(newRole);
-    if (interview) {
-      const newQ = newRole === 'INTERVIEWER'
-        ? interview.interviewerQuestion
-        : interview.candidateQuestion;
-      setQuestion(newQ);
+    userRoleRef.current = newRole;
+    const iv = interviewRef.current;
+    if (iv) {
+      setQuestion(newRole === 'INTERVIEWER' ? iv.interviewerQuestion : iv.candidateQuestion);
     }
   }
 
@@ -382,12 +483,10 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
         const otherId = peerIds.find((id: string) => id !== myId);
 
         if (otherId && peerRef.current) {
-          // Open data channel
           const conn = peerRef.current.connect(otherId, { reliable: true });
           setupDataConnection(conn);
           conn.on('open', () => { conn.send(JSON.stringify({ type: 'ping' })); });
 
-          // Open media call
           if (!mediaCallRef.current) {
             const call = peerRef.current.call(otherId, localStreamRef.current || new MediaStream());
             mediaCallRef.current = call;
@@ -451,6 +550,7 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
     if (newLang === language || switchingLang) return;
     setSwitchingLang(true);
     setLanguage(newLang);
+    languageRef.current = newLang;
     setSwitchingLang(false);
     lastSaveRef.current = Date.now();
 
@@ -464,25 +564,31 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
   }
 
   // ── Code change ──────────────────────────────────────────────────────────
+  // FIX 13: On each code change, send the updated code to peer via data channel
+  // so they see changes in real-time without any page reload.
   const handleCodeChange = useCallback((value: string | undefined) => {
     const v = value ?? '';
-    setCodeState(prev => ({ ...prev, [language]: v }));
+    const newState = { ...codeStateRef.current, [languageRef.current]: v };
+    setCodeState(newState);
+    codeStateRef.current = newState;
     lastSaveRef.current = Date.now();
 
+    // Send to peer in real-time
+    sendToPeer({ type: 'code_change', codeState: newState, language: languageRef.current });
+
+    // Debounce DB save
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      setCodeState(current => {
-        fetch(`/api/interviews/${params.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'updateCodeState', codeState: current, language }),
-        });
-        return current;
+      fetch(`/api/interviews/${params.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updateCodeState', codeState: codeStateRef.current, language: languageRef.current }),
       });
     }, 2000);
-  }, [language, params.id]);
+  }, [params.id]);
 
   // ── Run code ─────────────────────────────────────────────────────────────
+  // FIX 14: After running, broadcast the result to peer so both see it
   async function runCode() {
     const currentCode = codeState[language]?.trim();
     if (!currentCode) {
@@ -503,9 +609,15 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
         await runCodeClientSide(currentCode, data.languageId);
         return;
       }
-      setExecOutput(data.output || '(no output)');
-      setExecTime(data.executionTime || '');
-      setExecStatus(data.isError ? 'error' : 'success');
+      const output = data.output || '(no output)';
+      const execTimeVal = data.executionTime || '';
+      const isError = data.isError;
+      setExecOutput(output);
+      setExecTime(execTimeVal);
+      setExecStatus(isError ? 'error' : 'success');
+
+      // Broadcast result to peer
+      sendToPeer({ type: 'run_result', output, isError, execTime: execTimeVal });
     } catch {
       await runCodeClientSide(currentCode);
     }
@@ -531,9 +643,13 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
       else if (r?.stderr?.trim())   { output = r.stderr; isError = true; }
       else if (r?.status?.id === 5) { output = 'Time Limit Exceeded'; isError = true; }
       else                           { output = r?.stdout?.trim() || '(no output)'; }
+      const execTimeVal = r?.time ? `${Math.round(parseFloat(r.time) * 1000)}ms` : 'N/A';
       setExecOutput(output);
-      setExecTime(r?.time ? `${Math.round(parseFloat(r.time) * 1000)}ms` : 'N/A');
+      setExecTime(execTimeVal);
       setExecStatus(isError ? 'error' : 'success');
+
+      // Broadcast result to peer
+      sendToPeer({ type: 'run_result', output, isError, execTime: execTimeVal });
     } catch (err: any) {
       setExecOutput('Execution failed: ' + (err?.message || 'Unknown'));
       setExecStatus('error');
@@ -541,6 +657,7 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
   }
 
   // ── Run test cases ─────────────────────────────────────────────────────────
+  // FIX 15: After running tests, broadcast the results to peer
   async function runTests() {
     const currentCode = codeState[language]?.trim();
     if (!currentCode) return;
@@ -561,11 +678,28 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
       });
       const data = await res.json();
       setTestResults(data);
+      sendToPeer({ type: 'test_result', results: data });
     } catch {
       setTestResults({ error: 'Failed to run tests' });
     } finally {
       setRunningTests(false);
     }
+  }
+
+  // ── Reset code ───────────────────────────────────────────────────────────
+  // FIX 16: Reset also broadcasts to peer so both editors reset
+  function resetCode() {
+    const newState = { ...codeStateRef.current, [language]: STARTER_TEMPLATES[language] };
+    setCodeState(newState);
+    codeStateRef.current = newState;
+    lastSaveRef.current = Date.now();
+    sendToPeer({ type: 'reset_code', language });
+    // Save reset to DB
+    fetch(`/api/interviews/${params.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'updateCodeState', codeState: newState, language }),
+    });
   }
 
   // ── Drag resize ──────────────────────────────────────────────────────────
@@ -593,7 +727,6 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
     return <div className="h-screen flex items-center justify-center text-on-surface-variant">Interview not found.</div>;
   }
 
-  // ── Session ended overlay ────────────────────────────────────────────────
   if (sessionEnded) {
     return (
       <div className="h-screen bg-background flex items-center justify-center">
@@ -609,7 +742,10 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
     );
   }
 
-  const peer = interview.bookings.find(b => b.role !== userRole);
+  // FIX 17: Find "peer" (the other person) by their user ID, not by role mismatch.
+  // Previously `interview.bookings.find(b => b.role !== userRole)` would break
+  // after a role switch because both bookings temporarily show same data in state.
+  const peer = interview.bookings.find(b => b.user.id !== myUserId);
   const currentCode = codeState[language] ?? STARTER_TEMPLATES[language];
 
   const execStatusColors: Record<ExecStatus, string> = {
@@ -671,8 +807,9 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
           >
             stdin
           </button>
+          {/* FIX 16: Use resetCode() which broadcasts to peer */}
           <button
-            onClick={() => { setCodeState(prev => ({ ...prev, [language]: STARTER_TEMPLATES[language] })); lastSaveRef.current = Date.now(); }}
+            onClick={resetCode}
             className="px-3 py-1.5 rounded-lg text-xs font-bold text-on-surface-variant border border-outline-variant/20 hover:bg-surface-container-high transition-colors"
           >
             Reset
@@ -731,6 +868,7 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
                     {question.difficulty}
                   </span>
                   <span className="text-xs text-on-surface-variant">{question.topic}</span>
+                  {/* FIX 1: "Ask This" for INTERVIEWER, "Solve This" for CANDIDATE */}
                   <span className={`ml-auto px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                     userRole === 'INTERVIEWER' ? 'bg-primary/10 text-primary' : 'bg-tertiary/10 text-tertiary'
                   }`}>
@@ -866,7 +1004,6 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
                   <p className="text-xs text-error">{testResults.error}</p>
                 ) : testResults?.visibleResults ? (
                   <>
-                    {/* Visible test results */}
                     {testResults.visibleResults.map((r: any, i: number) => (
                       <div key={i} className={`p-3 rounded-xl border ${
                         r.status === 'PASS' ? 'bg-green-400/5 border-green-400/20'
@@ -903,7 +1040,6 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
                         {r.executionTime && <p className="text-[9px] text-on-surface-variant mt-1">⏱ {r.executionTime}</p>}
                       </div>
                     ))}
-                    {/* Hidden tests summary */}
                     {testResults.hiddenTotal > 0 && (
                       <div className={`p-3 rounded-xl border ${testResults.hiddenPassed ? 'bg-green-400/5 border-green-400/20' : 'bg-error/5 border-error/20'}`}>
                         <div className="flex items-center justify-between">
@@ -917,7 +1053,6 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
                         </div>
                       </div>
                     )}
-                    {/* Overall verdict */}
                     <div className={`p-3 rounded-xl text-center font-bold text-sm ${testResults.allPassed ? 'bg-green-400/10 text-green-400' : 'bg-surface-container text-on-surface-variant'}`}>
                       {testResults.allPassed
                         ? '🎉 All test cases passed!'
@@ -955,8 +1090,11 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
                 <p className="text-xs text-on-surface-variant mt-2">{peerConnected ? 'Camera Off' : 'Waiting...'}</p>
               </div>
             )}
+            {/* FIX 17: Show peer's actual name and their current role */}
             <div className="absolute bottom-2 left-2 px-2 py-1 rounded-lg bg-black/60">
-              <p className="text-[10px] font-bold text-white">{peer?.user.name ?? 'Peer'} · {peer?.role === 'INTERVIEWER' ? 'Interviewer' : 'Candidate'}</p>
+              <p className="text-[10px] font-bold text-white">
+                {peer?.user.name ?? 'Peer'} · {peer?.role === 'INTERVIEWER' ? 'Interviewer' : 'Candidate'}
+              </p>
             </div>
           </div>
 
@@ -982,28 +1120,24 @@ export default function InterviewRoomPage({ params }: { params: { id: string } }
             </div>
           </div>
 
-          {/* Role */}
+          {/* Role panel — FIX 18: Quick Feedback section removed as requested */}
           <div className="p-4 border-b border-outline-variant/10">
             <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-0.5">Active Role</p>
-            <p className="text-base font-headline font-black text-on-surface mb-1">{userRole === 'INTERVIEWER' ? 'Interviewer' : 'Candidate'}</p>
-            <p className="text-[11px] text-on-surface-variant mb-3 leading-relaxed">
-              {userRole === 'INTERVIEWER' ? 'Ask the question shown. Observe and guide the candidate.' : 'Solve the problem shown. Think out loud.'}
+            <p className="text-base font-headline font-black text-on-surface mb-1">
+              {userRole === 'INTERVIEWER' ? 'Interviewer' : 'Candidate'}
             </p>
-            <button onClick={switchRole} className="w-full py-1.5 rounded-xl text-xs font-bold border border-outline-variant/20 text-on-surface hover:bg-surface-container-high transition-colors">
+            <p className="text-[11px] text-on-surface-variant mb-3 leading-relaxed">
+              {userRole === 'INTERVIEWER'
+                ? 'Ask the question shown. Observe and guide the candidate.'
+                : 'Solve the problem shown. Think out loud.'}
+            </p>
+            <button
+              onClick={switchRole}
+              className="w-full py-1.5 rounded-xl text-xs font-bold border border-outline-variant/20 text-on-surface hover:bg-surface-container-high transition-colors"
+            >
               Switch to {userRole === 'INTERVIEWER' ? 'Candidate' : 'Interviewer'}
             </button>
           </div>
-
-          {userRole === 'INTERVIEWER' && (
-            <div className="p-4 flex-1 overflow-y-auto">
-              <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-3">Quick Feedback</p>
-              <div className="flex flex-wrap gap-1.5">
-                {['Excellent Approach', 'Consider Edge Cases', 'Optimize Complexity', 'Good Communication', 'Think Out Loud', 'Check Base Cases'].map(tag => (
-                  <button key={tag} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary transition-colors">{tag}</button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
