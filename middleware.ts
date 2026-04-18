@@ -24,12 +24,16 @@ export default async function middleware(req: NextRequest) {
   });
 
   const isLoggedIn = !!token;
-  const isPublic = pathname.startsWith('/login');
+
+  // ✅ Add '/' here so the landing page is always public
+  const isPublic = pathname === '/' || pathname.startsWith('/login');
 
   if (!isLoggedIn && !isPublic) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
-  if (isLoggedIn && isPublic) {
+
+  // ✅ Only redirect logged-in users away from /login, NOT from /
+  if (isLoggedIn && pathname.startsWith('/login')) {
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
