@@ -9,9 +9,11 @@ const manrope = Manrope({ subsets: ['latin'], variable: '--font-manrope', displa
 
 export const metadata: Metadata = {
   title: 'Tervix | Practice DSA Mock Interviews with Peers',
-  description: 'Practice real DSA mock interviews with peers. Book instant sessions, improve coding skills, and crack top tech interviews with Tervix.',
+  description:
+    'Practice real DSA mock interviews with peers. Book instant sessions, improve coding skills, and crack top tech interviews with Tervix.',
+  metadataBase: new URL('https://tervix-one.vercel.app'), // ✅ ADD THIS
   icons: {
-    icon: "/favicon.png",
+    icon: '/favicon.png',
   },
 };
 

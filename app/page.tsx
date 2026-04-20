@@ -7,14 +7,20 @@ export const metadata: Metadata = {
   description:
     'Practice real DSA mock interviews with peers. Book instant sessions, improve coding skills, and crack top tech interviews with Tervix.',
   icons: { icon: '/favicon.png' },
+
+  // ✅ ADD THIS (IMPORTANT)
+  alternates: {
+    canonical: '/',
+  },
+
   openGraph: {
     title: 'Tervix | Practice DSA Mock Interviews with Peers',
     description:
       'Live peer-to-peer DSA mock interviews. Same-day slots, real-time coding, honest feedback.',
     type: 'website',
+    url: 'https://tervix-one.vercel.app', // ✅ ADD THIS (better SEO)
   },
 };
-
 const features = [
   {
     icon: (
